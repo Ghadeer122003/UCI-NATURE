@@ -22,7 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements /app/requirements
+# 🔍 UPDATED PATH FOR RESTRUCTURE
+COPY server/requirements /app/requirements
 
 RUN python -m pip install --upgrade pip "setuptools<81" wheel && \
     python -m pip install --index-url https://download.pytorch.org/whl/cpu \
@@ -37,8 +38,13 @@ RUN python -m pip install --upgrade pip "setuptools<81" wheel && \
     python -m pip install --use-pep517 "speciesnet==5.0.3" && \
     python -c "import pkg_resources; import speciesnet; print('speciesnet import ok')"
 
-COPY . /app
+# =====================================================================
+# 🔍 UPDATED FOR RESTRUCTURE:
+# Copy the 'server' directory *into* a 'server' directory in '/app'
+# =====================================================================
+COPY server/ /app/server
 
 EXPOSE 8000
 
-CMD ["uvicorn", "ui.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Points Uvicorn to the new nested directory structure
+CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,7 +1,9 @@
 FROM nginx:1.27-alpine
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY ui /usr/share/nginx/html
+# 🔍 UPDATED FOR RESTRUCTURE: Point to 'deploy' and 'client' folders
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY client /usr/share/nginx/html
+
 RUN find /usr/share/nginx/html -type f -exec chmod 644 {} \; \
     && find /usr/share/nginx/html -type d -exec chmod 755 {} \;
 
