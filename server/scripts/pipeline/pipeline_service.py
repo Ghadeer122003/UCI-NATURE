@@ -227,6 +227,12 @@ def run_pipeline_service(
     rows_to_process = int(raw_rows_to_process or 0)
     print(f"Pipeline manifest to process: {process_manifest_path} ({rows_to_process} rows)")
 
+    # Clear last run's artifacts before deciding whether there is work to do.
+    # Previously this ran only when there were rows to process, so a run that
+    # found nothing new left the old review/results CSVs in place and the UI
+    # kept showing the previous run's images as if they were current.
+    _remove_stale_generated_outputs(config)
+
     if rows_to_process <= 0:
         elapsed = time.time() - started
         skip_message = (
@@ -261,8 +267,6 @@ def run_pipeline_service(
             },
             "notes": [skip_message],
         }
-
-    _remove_stale_generated_outputs(config)
 
     print("\n" + "=" * 80)
     print("STEP: Extract Metadata (EXIF)")

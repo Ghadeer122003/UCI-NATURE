@@ -47,3 +47,4 @@ ui/backend/data/logs/
 ui/backend/data/session.json
 ui/backend/data/sessions/
 site/
+server/logs/

@@ -4,8 +4,8 @@
 
 import argparse
 import csv
+import hashlib
 from datetime import datetime
-from pathlib import Path
 
 
 STAGING = Path("data/staging")
@@ -16,11 +16,28 @@ CACHE = Path("data/outputs/cache/processed_file_ids.txt")
 NEW_OUT = Path("data/outputs/manifest_new.csv")
 
 
+LOCAL_ID_PREFIX = "local:"
+
+
 def split_local_name(local_file_name: str):
     if "__" in local_file_name:
         file_id, original_name = local_file_name.split("__", 1)
         return file_id, original_name
     return "", local_file_name
+
+
+def derive_local_file_id(relative_path: Path) -> str:
+    """Stable synthetic id for images that did not come from Drive.
+
+    Drive downloads are named "<file_id>__<original_name>", so they carry an
+    id already. Files added any other way (SD-card upload, manual copy) keep
+    their original camera filename, which used to leave file_id empty. Those
+    rows were then dropped by the new-only filter, so the images never got
+    processed.
+    """
+    key = relative_path.as_posix()
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:20]
+    return f"{LOCAL_ID_PREFIX}{digest}"
 
 
 def write_csv(path: Path, rows: list[dict], fieldnames: list[str]) -> None:
@@ -96,6 +113,15 @@ def build_manifest(
 
         file_id, original_name = split_local_name(p.name)
 
+        if not file_id:
+            # Not a Drive download; mint a deterministic id so the file is not
+            # treated as unidentifiable and silently skipped downstream.
+            try:
+                relative_to_staging = p.relative_to(staging)
+            except ValueError:
+                relative_to_staging = Path(p.name)
+            file_id = derive_local_file_id(relative_to_staging)
+
         try:
             local_path = str(p.relative_to(Path.cwd()))
         except ValueError:
@@ -157,24 +183,33 @@ def build_manifest(
                         processed.add(s)
 
         new_rows = []
-        skipped = 0
+        skipped_already_processed = 0
+        missing_id = []
         for r in rows:
             fid = (r.get("file_id") or "").strip()
             if not fid:
-                skipped += 1
+                # Should be unreachable now that every row gets an id, but keep
+                # it loud instead of dropping images on the floor silently.
+                missing_id.append(r.get("local_path") or r.get("local_file_name") or "")
                 continue
             if fid in processed:
-                skipped += 1
+                skipped_already_processed += 1
                 continue
             new_rows.append(r)
 
         write_csv(new_out, new_rows, fieldnames)
         print(f"cache: {cache_path} ({len(processed)} ids)")
         print(f"wrote {len(new_rows)} rows -> {new_out}")
-        print(f"skipped {skipped} rows (already processed or missing file_id)")
+        print(f"skipped {skipped_already_processed} rows (already processed)")
+        if missing_id:
+            print(f"WARNING: {len(missing_id)} rows had no file_id and were NOT processed")
+            for path_value in missing_id[:10]:
+                print(f"  no file_id: {path_value}")
 
         result["new_manifest_path"] = str(new_out)
         result["new_rows_written"] = len(new_rows)
+        result["skipped_already_processed"] = skipped_already_processed
+        result["missing_file_id"] = len(missing_id)
 
         if update_cache:
             cache_result = append_manifest_file_ids_to_cache(new_out, cache_path)
